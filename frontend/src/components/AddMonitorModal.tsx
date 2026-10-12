@@ -9,18 +9,23 @@ export function AddMonitorModal({ onCreated }: { onCreated: (monitor: Monitor) =
     const [isOpen, setIsOpen] = useState(false);
     const [name, setName] = useState('');
     const [url, setUrl] = useState('');
+    const [pingIntervalSeconds, setPingIntervalSeconds] = useState<number>(30); // Varsayılan 30 saniye
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!name || !url) return;
-
         setLoading(true);
         try {
-            const created = await monitorApi.create({ name, url });
+            const created = await monitorApi.create({
+                name,
+                url,
+                pingIntervalSeconds
+            });
             onCreated(created);
             setName('');
             setUrl('');
+            setPingIntervalSeconds(30);
             setIsOpen(false);
         } catch (err) {
             alert('Monitör eklenirken bir hata oluştu');
@@ -74,6 +79,21 @@ export function AddMonitorModal({ onCreated }: { onCreated: (monitor: Monitor) =
                                     className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:border-emerald-500 focus:outline-none"
                                     required
                                 />
+                            </div>
+
+                            {/* YENİ EKLENEN KISIM: Kontrol Sıklığı Seçimi */}
+                            <div>
+                                <label className="block text-xs font-medium text-zinc-300 mb-1">Kontrol Sıklığı (Periyot)</label>
+                                <select
+                                    value={pingIntervalSeconds}
+                                    onChange={(e) => setPingIntervalSeconds(Number(e.target.value))}
+                                    className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                                >
+                                    <option value={10}>Her 10 Saniyede Bir (Hızlı)</option>
+                                    <option value={30}>Her 30 Saniyede Bir</option>
+                                    <option value={60}>Her 1 Dakikada Bir (Önerilen)</option>
+                                    <option value={300}>Her 5 Dakikada Bir</option>
+                                </select>
                             </div>
 
                             <div className="flex justify-end gap-2 pt-2">

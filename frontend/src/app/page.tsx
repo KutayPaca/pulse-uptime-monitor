@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Activity, Globe, Trash2, ArrowUpRight } from 'lucide-react';
+import { Activity, Globe, Trash2, ArrowUpRight, Clock } from 'lucide-react';
 import { Monitor, PingLog, WebSocketPingPayload } from '@/types/monitor';
 import { monitorApi } from '@/lib/api';
 import { useMonitorWebSocket } from '@/hooks/useMonitorWebSocket';
@@ -16,23 +16,52 @@ export default function Dashboard() {
 
   // İlk yükleme
   useEffect(() => {
+    let isMounted = true;
     monitorApi
         .getAll()
         .then((data) => {
-          setMonitors(data);
-          if (data.length > 0) setSelectedId(data[0].id);
+          if (isMounted) {
+            setMonitors(data);
+            if (data.length > 0) {
+              setSelectedId(data[0].id);
+            }
+          }
         })
-        .catch((err) => console.error(err))
-        .finally(() => setLoading(false));
+        .catch((err) => {
+          console.error('Monitör yükleme hatası:', err);
+        })
+        .finally(() => {
+          if (isMounted) {
+            setLoading(false);
+          }
+        });
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // Seçili monitörün loglarını getirme
+  // Seçili monitörün loglarını getirme (ESLint cascading render önlemiyle)
   useEffect(() => {
-    if (selectedId) {
-      monitorApi.getLogs(selectedId).then(setLogs).catch(console.error);
-    } else {
-      setLogs([]);
+    if (!selectedId) {
+      return;
     }
+
+    let isMounted = true;
+    monitorApi
+        .getLogs(selectedId)
+        .then((data) => {
+          if (isMounted) {
+            setLogs(data);
+          }
+        })
+        .catch((err) => {
+          console.error('Log getirme hatası:', err);
+        });
+
+    return () => {
+      isMounted = false;
+    };
   }, [selectedId]);
 
   // Canlı WebSocket Ping dinleyicisi
@@ -71,8 +100,9 @@ export default function Dashboard() {
       if (selectedId === id) {
         const remaining = monitors.filter((m) => m.id !== id);
         setSelectedId(remaining.length > 0 ? remaining[0].id : null);
+        setLogs([]);
       }
-    } catch (err) {
+    } catch {
       alert('Silme işlemi başarısız');
     }
   };
@@ -155,7 +185,12 @@ export default function Dashboard() {
                         }`}
                     />
                           <div className="overflow-hidden">
-                            <div className="text-sm font-medium text-white truncate">{m.name}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-white truncate">{m.name}</span>
+                              <span className="text-[10px] font-mono bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400 border border-zinc-700/50 shrink-0">
+                          {m.pingIntervalSeconds ? `${m.pingIntervalSeconds}s` : '60s'}
+                        </span>
+                            </div>
                             <div className="text-xs text-zinc-500 truncate">{m.url}</div>
                           </div>
                         </div>
@@ -178,12 +213,18 @@ export default function Dashboard() {
                   <>
                     <div className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
                       <div>
-                        <h3 className="text-base font-semibold text-white">{selectedMonitor.name}</h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-base font-semibold text-white">{selectedMonitor.name}</h3>
+                          <span className="flex items-center gap-1 text-[11px] font-mono bg-zinc-800/80 px-2 py-0.5 rounded text-zinc-400 border border-zinc-700/40">
+                        <Clock className="h-3 w-3 text-zinc-500" />
+                            {selectedMonitor.pingIntervalSeconds ? `${selectedMonitor.pingIntervalSeconds}s kontrol` : '60s kontrol'}
+                      </span>
+                        </div>
                         <a
                             href={selectedMonitor.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs text-zinc-400 hover:text-emerald-400 transition mt-0.5"
+                            className="flex items-center gap-1 text-xs text-zinc-400 hover:text-emerald-400 transition mt-1"
                         >
                           <Globe className="h-3.5 w-3.5" />
                           {selectedMonitor.url}
