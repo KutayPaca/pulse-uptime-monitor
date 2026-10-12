@@ -1,0 +1,24 @@
+# IDE ve Editör Dosyaları
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+
+# İşletim Sistemi Dosyaları
+.DS_Store
+Thumbs.db
+
+# Docker ve Arşiv Paketleri
+*.tar
+*.tar.gz
+
+# Ortam Değişkenleri
+.env
+.env.local
+
+# Alt Proje Çıktıları (Güvenlik Önlemi)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+backend/target/
