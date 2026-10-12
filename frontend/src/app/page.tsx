@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Activity, Globe, Trash2, ArrowUpRight, Clock, Database } from 'lucide-react';
+import { Activity, Globe, Trash2, ArrowUpRight, Clock, GripVertical } from 'lucide-react';
 import { Monitor, PingLog, WebSocketPingPayload } from '@/types/monitor';
-import { monitorApi, DatabaseStats } from '@/lib/api';
+import { monitorApi, DatabaseStats, MonitorStats } from '@/lib/api';
 import { useMonitorWebSocket } from '@/hooks/useMonitorWebSocket';
 import { LatencyChart } from '@/components/LatencyChart';
 import { AddMonitorModal } from '@/components/AddMonitorModal';
@@ -14,64 +14,67 @@ export default function Dashboard() {
   const [logs, setLogs] = useState<PingLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DatabaseStats | null>(null);
+  const [monitorStats, setMonitorStats] = useState<MonitorStats | null>(null);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
-  // Veritabanı boyut istatistiklerini getiren fonksiyon
   const fetchStats = () => {
-    monitorApi
-        .getStats()
-        .then(setStats)
-        .catch((err) => console.error('Stats hatası:', err));
+    monitorApi.getStats().then(setStats).catch(console.error);
   };
 
-  // İlk yükleme
+  const saveOrderToStorage = (orderedMonitors: Monitor[]) => {
+    try {
+      localStorage.setItem('pulse_monitor_order', JSON.stringify(orderedMonitors.map((m) => m.id)));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
     monitorApi
         .getAll()
         .then((data) => {
-          if (isMounted) {
-            setMonitors(data);
-            if (data.length > 0) {
-              setSelectedId(data[0].id);
+          if (!isMounted) return;
+          let sortedData = [...data];
+          try {
+            const savedOrder = localStorage.getItem('pulse_monitor_order');
+            if (savedOrder) {
+              const orderIds: number[] = JSON.parse(savedOrder);
+              sortedData.sort((a, b) => {
+                const idxA = orderIds.indexOf(a.id);
+                const idxB = orderIds.indexOf(b.id);
+                if (idxA === -1 && idxB === -1) return 0;
+                if (idxA === -1) return 1;
+                if (idxB === -1) return -1;
+                return idxA - idxB;
+              });
             }
+          } catch (e) {
+            console.error(e);
           }
+          setMonitors(sortedData);
+          if (sortedData.length > 0) setSelectedId(sortedData[0].id);
         })
-        .catch((err) => {
-          console.error('Monitör yükleme hatası:', err);
-        })
+        .catch(console.error)
         .finally(() => {
-          if (isMounted) {
-            setLoading(false);
-          }
+          if (isMounted) setLoading(false);
         });
 
     fetchStats();
-
-    return () => {
-      isMounted = false;
-    };
+    return () => { isMounted = false; };
   }, []);
 
-  // Seçili monitörün loglarını getirme
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId) {
+      setMonitorStats(null);
+      return;
+    }
     let isMounted = true;
-    monitorApi
-        .getLogs(selectedId)
-        .then((data) => {
-          if (isMounted) {
-            setLogs(data);
-          }
-        })
-        .catch((err) => {
-          console.error('Log getirme hatası:', err);
-        });
-    return () => {
-      isMounted = false;
-    };
+    monitorApi.getLogs(selectedId).then((data) => { if (isMounted) setLogs(data); }).catch(console.error);
+    monitorApi.getMonitorStats(selectedId).then((data) => { if (isMounted) setMonitorStats(data); }).catch(console.error);
+    return () => { isMounted = false; };
   }, [selectedId]);
 
-  // Canlı WebSocket Ping dinleyicisi
   const handlePing = useCallback((payload: WebSocketPingPayload) => {
     setMonitors((prev) =>
         prev.map((m) => (m.id === payload.monitorId ? { ...m, status: payload.status } : m))
@@ -90,18 +93,13 @@ export default function Dashboard() {
           },
           ...prevLogs.slice(0, 19),
         ]);
+        monitorApi.getMonitorStats(payload.monitorId).then(setMonitorStats).catch(console.error);
       }
       return currSelected;
     });
 
-    // Her ping geldiğinde log sayısı arttığı için istatistikleri güncelle
     setStats((prev) =>
-        prev
-            ? {
-              ...prev,
-              totalPingLogsCount: prev.totalPingLogsCount + 1,
-            }
-            : prev
+        prev ? { ...prev, totalPingLogsCount: prev.totalPingLogsCount + 1 } : prev
     );
   }, []);
 
@@ -112,11 +110,13 @@ export default function Dashboard() {
     if (!confirm('Bu monitörü silmek istediğinize emin misiniz?')) return;
     try {
       await monitorApi.delete(id);
-      setMonitors((prev) => prev.filter((m) => m.id !== id));
+      const updated = monitors.filter((m) => m.id !== id);
+      setMonitors(updated);
+      saveOrderToStorage(updated);
       if (selectedId === id) {
-        const remaining = monitors.filter((m) => m.id !== id);
-        setSelectedId(remaining.length > 0 ? remaining[0].id : null);
+        setSelectedId(updated.length > 0 ? updated[0].id : null);
         setLogs([]);
+        setMonitorStats(null);
       }
       fetchStats();
     } catch {
@@ -124,104 +124,121 @@ export default function Dashboard() {
     }
   };
 
+  const handleDrop = (dropIndex: number) => {
+    if (draggedIndex === null || draggedIndex === dropIndex) {
+      setDraggedIndex(null);
+      return;
+    }
+    const updated = [...monitors];
+    const [movedItem] = updated.splice(draggedIndex, 1);
+    updated.splice(dropIndex, 0, movedItem);
+    setMonitors(updated);
+    setDraggedIndex(null);
+    saveOrderToStorage(updated);
+  };
+
   const selectedMonitor = monitors.find((m) => m.id === selectedId);
   const upCount = monitors.filter((m) => m.status === 'UP').length;
   const downCount = monitors.filter((m) => m.status === 'DOWN').length;
 
   return (
-      <main className="min-h-screen bg-black text-zinc-100 p-6 md:p-10 font-sans">
-        <div className="max-w-6xl mx-auto space-y-8">
-          {/* Üst Bar */}
-          <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-zinc-800 pb-6">
+      <main className="min-h-screen bg-[#09090b] text-zinc-100 p-6 md:p-10 font-sans selection:bg-emerald-500/20 selection:text-emerald-400">
+        <div className="max-w-6xl mx-auto space-y-6">
+
+          {/* Üst Bar: Minimal ve Temiz */}
+          <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 pb-2">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                <Activity className="h-6 w-6" />
+              <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                <Activity className="h-5 w-5" />
               </div>
               <div>
-                <h1 className="text-xl font-bold tracking-tight text-white">Pulse Uptime</h1>
-                <p className="text-xs text-zinc-400">Ağ gecikmesi ve servis izleme paneli</p>
+                <h1 className="text-lg font-semibold tracking-tight text-white">Pulse Uptime</h1>
+                <p className="text-xs text-zinc-400">Servis durumu ve ağ gecikme paneli</p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <AddMonitorModal onCreated={(newMon) => {
-                setMonitors((prev) => [...prev, newMon]);
-                fetchStats();
-              }} />
-            </div>
+            <AddMonitorModal onCreated={(newMon) => {
+              const updated = [...monitors, newMon];
+              setMonitors(updated);
+              saveOrderToStorage(updated);
+              fetchStats();
+            }} />
           </header>
 
-          {/* İstatistik Kartları (5 Kolon) */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="p-4 rounded-xl border border-zinc-800/80 bg-zinc-900/40">
-              <span className="text-xs text-zinc-400">Toplam İzlenen</span>
-              <div className="text-2xl font-bold mt-1 text-white">{monitors.length}</div>
+          {/* Global Özet Bandı (Ağır 5 kart yerine hafif 4'lü kompakt bant) */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-3.5 flex items-center justify-between">
+              <span className="text-xs text-zinc-400">İzlenen Servis</span>
+              <span className="text-lg font-semibold text-white">{monitors.length}</span>
             </div>
-            <div className="p-4 rounded-xl border border-emerald-950/60 bg-emerald-950/10">
-              <span className="text-xs text-emerald-400">Aktif (UP)</span>
-              <div className="text-2xl font-bold mt-1 text-emerald-400">{upCount}</div>
+            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-3.5 flex items-center justify-between">
+              <span className="text-xs text-zinc-400">Çalışır Durumda</span>
+              <span className="text-lg font-semibold text-emerald-400">{upCount} aktif</span>
             </div>
-            <div className="p-4 rounded-xl border border-rose-950/60 bg-rose-950/10">
-              <span className="text-xs text-rose-400">Kesintide (DOWN)</span>
-              <div className="text-2xl font-bold mt-1 text-rose-400">{downCount}</div>
-            </div>
-            <div className="p-4 rounded-xl border border-zinc-800/80 bg-zinc-900/40">
-              <span className="text-xs text-zinc-400">Genel Sağlık</span>
-              <div className="text-2xl font-bold mt-1 text-white">
-                {monitors.length > 0 ? `${Math.round((upCount / monitors.length) * 100)}%` : '-%'}
-              </div>
-            </div>
-            <div className="p-4 rounded-xl border border-zinc-800/80 bg-zinc-900/40 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-zinc-400">Log Depolama</span>
-                <span className="text-[10px] font-mono text-zinc-500">
-                {stats?.totalPingLogsCount ?? 0} ping
-              </span>
-              </div>
-              <div className="text-2xl font-bold mt-1 text-white">
-                {stats?.pingLogsTableSize || '0 kB'}
-              </div>
-              <span className="text-[10px] font-mono text-zinc-500 mt-1 truncate">
-              DB: {stats?.databaseSize || '0 kB'}
+            <div className={`rounded-xl border p-3.5 flex items-center justify-between ${
+                downCount > 0 ? 'border-rose-900/50 bg-rose-950/20' : 'border-zinc-800/80 bg-zinc-900/30'
+            }`}>
+              <span className="text-xs text-zinc-400">Kesintide</span>
+              <span className={`text-lg font-semibold ${downCount > 0 ? 'text-rose-400' : 'text-zinc-500'}`}>
+              {downCount}
             </span>
+            </div>
+            <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-3.5 flex items-center justify-between">
+              <span className="text-xs text-zinc-400">Veritabanı</span>
+              <div className="text-right">
+                <span className="text-xs font-mono text-zinc-300">{stats?.pingLogsTableSize || '0 kB'}</span>
+                <span className="text-[10px] text-zinc-500 block">({stats?.totalPingLogsCount ?? 0} ping)</span>
+              </div>
             </div>
           </div>
 
-          {/* Ana İçerik: Liste ve Grafik */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Sol Kolon: Monitör Listesi */}
-            <div className="space-y-3 lg:col-span-1">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Servisler</h2>
+          {/* Ana Gövde */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pt-2">
+
+            {/* Sol Kolon: Servis Listesi */}
+            <div className="space-y-2.5 lg:col-span-1">
+              <div className="flex items-center justify-between px-1 pb-1">
+                <h2 className="text-xs font-medium tracking-wider text-zinc-400 uppercase">Servisler</h2>
+                <span className="text-[10px] text-zinc-600">Sürükle & Sırala</span>
+              </div>
+
               {loading ? (
-                  <div className="text-xs text-zinc-500 py-4">Monitörler yükleniyor...</div>
+                  <div className="text-xs text-zinc-500 p-4">Yükleniyor...</div>
               ) : monitors.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-zinc-800 p-6 text-center text-xs text-zinc-500">
-                    Henüz kayıtlı bir monitör yok. Yukarıdan ekleyin.
+                  <div className="rounded-xl border border-dashed border-zinc-800/80 p-8 text-center text-xs text-zinc-500">
+                    Kayıtlı monitör yok.
                   </div>
               ) : (
-                  monitors.map((m) => (
+                  monitors.map((m, index) => (
                       <div
                           key={m.id}
+                          draggable
+                          onDragStart={() => setDraggedIndex(index)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => handleDrop(index)}
                           onClick={() => setSelectedId(m.id)}
-                          className={`group relative flex items-center justify-between p-3.5 rounded-xl border cursor-pointer transition ${
+                          className={`group flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                              draggedIndex === index ? 'opacity-30 border-dashed border-emerald-500' : ''
+                          } ${
                               selectedId === m.id
-                                  ? 'border-emerald-500/50 bg-zinc-900 shadow-sm'
-                                  : 'border-zinc-800/80 bg-zinc-950/60 hover:border-zinc-700'
+                                  ? 'border-emerald-500/40 bg-zinc-900/80 shadow-sm'
+                                  : 'border-zinc-800/60 bg-zinc-900/20 hover:border-zinc-700/80 hover:bg-zinc-900/40'
                           }`}
                       >
-                        <div className="flex items-center gap-3 overflow-hidden">
-                    <span
-                        className={`h-2.5 w-2.5 shrink-0 rounded-full ${
-                            m.status === 'UP'
-                                ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]'
-                                : m.status === 'DOWN'
-                                    ? 'bg-rose-500 shadow-[0_0_8px_#f43f5e]'
-                                    : 'bg-amber-500'
-                        }`}
-                    />
+                        <div className="flex items-center gap-2.5 overflow-hidden">
+                          <GripVertical className="h-3.5 w-3.5 text-zinc-600 group-hover:text-zinc-400 shrink-0 cursor-grab" />
+                          <span
+                              className={`h-2 w-2 shrink-0 rounded-full ${
+                                  m.status === 'UP'
+                                      ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]'
+                                      : m.status === 'DOWN'
+                                          ? 'bg-rose-500 shadow-[0_0_8px_#f43f5e]'
+                                          : 'bg-amber-500'
+                              }`}
+                          />
                           <div className="overflow-hidden">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-white truncate">{m.name}</span>
-                              <span className="text-[10px] font-mono bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400 border border-zinc-700/50 shrink-0">
+                              <span className="text-sm font-medium text-zinc-200 truncate">{m.name}</span>
+                              <span className="text-[10px] font-mono text-zinc-500">
                           {m.pingIntervalSeconds ? `${m.pingIntervalSeconds}s` : '60s'}
                         </span>
                             </div>
@@ -233,57 +250,74 @@ export default function Dashboard() {
                             className="opacity-0 group-hover:opacity-100 p-1.5 text-zinc-500 hover:text-rose-400 transition"
                             title="Sil"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
                   ))
               )}
             </div>
 
-            {/* Sağ Kolon: Detay & Grafik */}
-            <div className="space-y-4 lg:col-span-2">
+            {/* Sağ Kolon: TEK BİR ENTEGRE PANEL (Tüm parçalanmış kutular burada birleşti) */}
+            <div className="lg:col-span-2">
               {selectedMonitor ? (
-                  <>
-                    <div className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+                  <div className="rounded-2xl border border-zinc-800/80 bg-zinc-900/30 overflow-hidden">
+
+                    {/* Entegre Panel Başlığı ve Hızlı Metrikler */}
+                    <div className="p-5 border-b border-zinc-800/60 flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-base font-semibold text-white">{selectedMonitor.name}</h3>
-                          <span className="flex items-center gap-1 text-[11px] font-mono bg-zinc-800/80 px-2 py-0.5 rounded text-zinc-400 border border-zinc-700/40">
-                        <Clock className="h-3 w-3 text-zinc-500" />
-                            {selectedMonitor.pingIntervalSeconds ? `${selectedMonitor.pingIntervalSeconds}s kontrol` : '60s kontrol'}
+                        <div className="flex items-center gap-2.5">
+                          <h3 className="text-base font-semibold text-white tracking-tight">{selectedMonitor.name}</h3>
+                          <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-medium ${
+                              selectedMonitor.status === 'UP'
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                  : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                          }`}>
+                        {selectedMonitor.status}
                       </span>
                         </div>
                         <a
                             href={selectedMonitor.url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-xs text-zinc-400 hover:text-emerald-400 transition mt-1"
+                            className="inline-flex items-center gap-1 text-xs text-zinc-400 hover:text-emerald-400 transition mt-1"
                         >
-                          <Globe className="h-3.5 w-3.5" />
+                          <Globe className="h-3 w-3" />
                           {selectedMonitor.url}
-                          <ArrowUpRight className="h-3 w-3" />
+                          <ArrowUpRight className="h-3 w-3 text-zinc-500" />
                         </a>
                       </div>
-                      <span
-                          className={`px-2.5 py-1 rounded-full text-xs font-bold font-mono tracking-wide ${
-                              selectedMonitor.status === 'UP'
-                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                                  : selectedMonitor.status === 'DOWN'
-                                      ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                                      : 'bg-amber-500/10 text-amber-400'
-                          }`}
-                      >
-                    {selectedMonitor.status}
-                  </span>
+
+                      {/* Yan Yana İki Temiz Metrik (Kutu değil, temiz tipografi) */}
+                      <div className="flex items-center gap-6 bg-zinc-950/40 px-4 py-2 rounded-xl border border-zinc-800/50">
+                        <div>
+                          <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500 block">Uptime</span>
+                          <span className="text-base font-semibold text-emerald-400">
+                        %{monitorStats?.uptimePercentage || '0.00'}
+                      </span>
+                        </div>
+                        <div className="h-7 w-px bg-zinc-800" />
+                        <div>
+                          <span className="text-[10px] uppercase font-mono tracking-wider text-zinc-500 block">Ortalama Yanıt</span>
+                          <span className="text-base font-semibold text-zinc-200">
+                        {monitorStats?.averageLatencyMs || 0} <span className="text-xs font-normal text-zinc-500">ms</span>
+                      </span>
+                        </div>
+                      </div>
                     </div>
-                    <LatencyChart logs={logs} />
-                  </>
+
+                    {/* Grafik (Doğrudan kartın gövdesine oturuyor) */}
+                    <div className="p-4">
+                      <LatencyChart logs={logs} />
+                    </div>
+
+                  </div>
               ) : (
-                  <div className="flex h-64 items-center justify-center rounded-xl border border-zinc-800/60 bg-zinc-950/40 text-xs text-zinc-500">
-                    Detayları incelemek için sol taraftan bir monitör seçin.
+                  <div className="h-64 rounded-2xl border border-dashed border-zinc-800/80 flex items-center justify-center text-xs text-zinc-500">
+                    İncelemek için sol taraftan bir monitör seçin.
                   </div>
               )}
             </div>
+
           </div>
         </div>
       </main>

@@ -5,6 +5,7 @@
     container_name: pulse-postgres
     restart: always
     environment:
+      TZ: Europe/Istanbul
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -43,6 +44,7 @@
     ports:
       - "8080:8080"
     environment:
+      TZ: Europe/Istanbul
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
       SPRING_DATASOURCE_USERNAME: ${DB_USER}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}

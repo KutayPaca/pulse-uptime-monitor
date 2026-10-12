@@ -2,6 +2,7 @@ package com.pulse.backend.service;
 
 import com.pulse.backend.dto.CreateMonitorRequest;
 import com.pulse.backend.dto.MonitorResponse;
+import com.pulse.backend.dto.MonitorStatsResponse;
 import com.pulse.backend.exception.ResourceNotFoundException;
 import com.pulse.backend.model.Monitor;
 import com.pulse.backend.model.PingLog;
@@ -80,4 +81,26 @@ public class MonitorService {
     public long getTotalLogsCount() {
         return pingLogRepository.count();
     }
+
+    // MonitorService.java içerisine ekle:
+
+    public MonitorStatsResponse getStatsForSingleMonitor(Long monitorId) {
+        Monitor monitor = monitorRepository.findById(monitorId)
+                .orElseThrow(() -> new ResourceNotFoundException("Monitör bulunamadı"));
+
+        if (monitor.getTotalChecks() == 0) {
+            return new MonitorStatsResponse("0.00", 0);
+        }
+
+        double uptime = ((double) monitor.getTotalUpChecks() / monitor.getTotalChecks()) * 100;
+        // Locale.US kullanarak virgül yerine nokta ile formatlıyoruz (örn: 99.95)
+        String formattedUptime = String.format(java.util.Locale.US, "%.2f", uptime);
+
+        long avgLatency = monitor.getTotalUpChecks() > 0
+                ? monitor.getTotalLatencySum() / monitor.getTotalUpChecks()
+                : 0;
+
+        return new MonitorStatsResponse(formattedUptime, avgLatency);
+    }
+
 }

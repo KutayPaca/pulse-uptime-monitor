@@ -3,6 +3,7 @@ package com.pulse.backend.controller;
 import com.pulse.backend.dto.CreateMonitorRequest;
 import com.pulse.backend.dto.DatabaseStatsResponse;
 import com.pulse.backend.dto.MonitorResponse;
+import com.pulse.backend.dto.MonitorStatsResponse;
 import com.pulse.backend.model.PingLog;
 import com.pulse.backend.service.MonitorService;
 import jakarta.validation.Valid;
@@ -41,6 +42,13 @@ public class MonitorController {
     @GetMapping("/{id}/logs")
     public ResponseEntity<List<PingLog>> getLogsForMonitor(@PathVariable Long id) {
         return ResponseEntity.ok(monitorService.getLogsForMonitor(id));
+    }
+
+    // MonitorController.java içerisine ekle:
+
+    @GetMapping("/{id}/stats")
+    public ResponseEntity<MonitorStatsResponse> getSingleMonitorStats(@PathVariable Long id) {
+        return ResponseEntity.ok(monitorService.getStatsForSingleMonitor(id));
     }
 
     @GetMapping("/stats")

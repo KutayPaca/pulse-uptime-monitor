@@ -9,6 +9,11 @@ export interface DatabaseStats {
     totalPingLogsCount: number;
 }
 
+export interface MonitorStats {
+    uptimePercentage: string;
+    averageLatencyMs: number;
+}
+
 export const monitorApi = {
     async getAll(): Promise<Monitor[]> {
         const res = await fetch(`${API_BASE}/monitors`, { cache: 'no-store' });
@@ -43,4 +48,11 @@ export const monitorApi = {
         if (!res.ok) throw new Error('İstatistikler alınamadı');
         return res.json();
     },
+
+    async getMonitorStats(id: number): Promise<MonitorStats> {
+        const res = await fetch(`${API_BASE}/monitors/${id}/stats`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('İstatistikler alınamadı');
+        return res.json();
+    },
+
 };

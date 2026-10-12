@@ -68,4 +68,10 @@ public class Monitor {
      * Kayıt oluşturulduğu anda sistemin güncel saatini otomatik alır.
      */
     private LocalDateTime createdAt = LocalDateTime.now();
+
+    // Monitor.java içine mevcut alanların altına ekle:
+
+    private long totalChecks = 0;      // Toplam atılan ping sayısı
+    private long totalUpChecks = 0;    // Başarılı (UP) olan ping sayısı
+    private long totalLatencySum = 0;  // Başarılı pinglerin toplam gecikme süresi
 }

@@ -82,6 +82,13 @@ public class DynamicPingScheduler {
         LocalDateTime now = LocalDateTime.now();
 
         monitor.setStatus(result.getStatus());
+
+        monitor.setTotalChecks(monitor.getTotalChecks() + 1);
+        if ("UP".equals(result.getStatus())) {
+            monitor.setTotalUpChecks(monitor.getTotalUpChecks() + 1);
+            monitor.setTotalLatencySum(monitor.getTotalLatencySum() + result.getResponseTimeMs());
+        }
+
         monitorRepository.save(monitor);
 
         PingLog pingLog = new PingLog(
