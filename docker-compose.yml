@@ -18,7 +18,20 @@
       timeout: 5s
       retries: 5
 
-  # ... (redis servisi aynı kalacak) ...
+  # 2. Redis Önbellek ve Durum Sunucusu
+  redis:
+    image: redis:7-alpine
+    container_name: pulse-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   # 3. Spring Boot Backend Servisi
   backend:
@@ -30,7 +43,6 @@
     ports:
       - "8080:8080"
     environment:
-      # Veritabanı şifrelerini .env'den okuyup Spring Boot'a aktarıyoruz
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
       SPRING_DATASOURCE_USERNAME: ${DB_USER}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
@@ -43,4 +55,18 @@
       redis:
         condition: service_healthy
 
-  # ... (frontend servisi aynı kalacak) ...
+  # 4. Next.js Frontend Arayüzü
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pulse-frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:

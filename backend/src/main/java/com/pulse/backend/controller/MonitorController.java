@@ -1,6 +1,7 @@
 package com.pulse.backend.controller;
 
 import com.pulse.backend.dto.CreateMonitorRequest;
+import com.pulse.backend.dto.DatabaseStatsResponse;
 import com.pulse.backend.dto.MonitorResponse;
 import com.pulse.backend.model.PingLog;
 import com.pulse.backend.service.MonitorService;
@@ -40,5 +41,20 @@ public class MonitorController {
     @GetMapping("/{id}/logs")
     public ResponseEntity<List<PingLog>> getLogsForMonitor(@PathVariable Long id) {
         return ResponseEntity.ok(monitorService.getLogsForMonitor(id));
+    }
+
+    @GetMapping("/stats")
+    public ResponseEntity<DatabaseStatsResponse> getDatabaseStats() {
+        String dbSize = monitorService.getDatabaseSize(); // Bunu service'e ekleyeceğiz
+        String tableSize = monitorService.getPingLogsTableSize(); // Bunu service'e ekleyeceğiz
+        long totalLogs = monitorService.getTotalLogsCount(); // Bunu service'e ekleyeceğiz
+
+        DatabaseStatsResponse stats = DatabaseStatsResponse.builder()
+                .databaseSize(dbSize)
+                .pingLogsTableSize(tableSize)
+                .totalPingLogsCount(totalLogs)
+                .build();
+
+        return ResponseEntity.ok(stats);
     }
 }

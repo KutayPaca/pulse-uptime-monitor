@@ -2,6 +2,13 @@ import { Monitor, PingLog } from '@/types/monitor';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
+// Yeni eklenen istatistik arayüzü
+export interface DatabaseStats {
+    databaseSize: string;
+    pingLogsTableSize: string;
+    totalPingLogsCount: number;
+}
+
 export const monitorApi = {
     async getAll(): Promise<Monitor[]> {
         const res = await fetch(`${API_BASE}/monitors`, { cache: 'no-store' });
@@ -27,6 +34,13 @@ export const monitorApi = {
     async getLogs(id: number): Promise<PingLog[]> {
         const res = await fetch(`${API_BASE}/monitors/${id}/logs`, { cache: 'no-store' });
         if (!res.ok) throw new Error('Loglar alınamadı');
+        return res.json();
+    },
+
+    // Yeni eklenen istatistikleri getiren metot
+    async getStats(): Promise<DatabaseStats> {
+        const res = await fetch(`${API_BASE}/monitors/stats`, { cache: 'no-store' });
+        if (!res.ok) throw new Error('İstatistikler alınamadı');
         return res.json();
     },
 };

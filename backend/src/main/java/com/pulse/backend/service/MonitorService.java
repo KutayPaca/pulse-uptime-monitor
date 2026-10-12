@@ -68,4 +68,16 @@ public class MonitorService {
     public List<PingLog> getLogsForMonitor(Long monitorId) {
         return pingLogRepository.findTop20ByMonitorIdOrderByCheckedAtDesc(monitorId);
     }
+
+    public String getDatabaseSize() {
+        return pingLogRepository.getDatabaseSize();
+    }
+
+    public String getPingLogsTableSize() {
+        return pingLogRepository.getPingLogsTableSize();
+    }
+
+    public long getTotalLogsCount() {
+        return pingLogRepository.count();
+    }
 }

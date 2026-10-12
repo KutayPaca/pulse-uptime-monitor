@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Activity, Globe, Trash2, ArrowUpRight, Clock } from 'lucide-react';
+import { Activity, Globe, Trash2, ArrowUpRight, Clock, Database } from 'lucide-react';
 import { Monitor, PingLog, WebSocketPingPayload } from '@/types/monitor';
-import { monitorApi } from '@/lib/api';
+import { monitorApi, DatabaseStats } from '@/lib/api';
 import { useMonitorWebSocket } from '@/hooks/useMonitorWebSocket';
 import { LatencyChart } from '@/components/LatencyChart';
 import { AddMonitorModal } from '@/components/AddMonitorModal';
@@ -13,6 +13,15 @@ export default function Dashboard() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [logs, setLogs] = useState<PingLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<DatabaseStats | null>(null);
+
+  // Veritabanı boyut istatistiklerini getiren fonksiyon
+  const fetchStats = () => {
+    monitorApi
+        .getStats()
+        .then(setStats)
+        .catch((err) => console.error('Stats hatası:', err));
+  };
 
   // İlk yükleme
   useEffect(() => {
@@ -36,17 +45,16 @@ export default function Dashboard() {
           }
         });
 
+    fetchStats();
+
     return () => {
       isMounted = false;
     };
   }, []);
 
-  // Seçili monitörün loglarını getirme (ESLint cascading render önlemiyle)
+  // Seçili monitörün loglarını getirme
   useEffect(() => {
-    if (!selectedId) {
-      return;
-    }
-
+    if (!selectedId) return;
     let isMounted = true;
     monitorApi
         .getLogs(selectedId)
@@ -58,7 +66,6 @@ export default function Dashboard() {
         .catch((err) => {
           console.error('Log getirme hatası:', err);
         });
-
     return () => {
       isMounted = false;
     };
@@ -86,6 +93,16 @@ export default function Dashboard() {
       }
       return currSelected;
     });
+
+    // Her ping geldiğinde log sayısı arttığı için istatistikleri güncelle
+    setStats((prev) =>
+        prev
+            ? {
+              ...prev,
+              totalPingLogsCount: prev.totalPingLogsCount + 1,
+            }
+            : prev
+    );
   }, []);
 
   useMonitorWebSocket(handlePing);
@@ -93,7 +110,6 @@ export default function Dashboard() {
   const handleDelete = async (e: React.MouseEvent, id: number) => {
     e.stopPropagation();
     if (!confirm('Bu monitörü silmek istediğinize emin misiniz?')) return;
-
     try {
       await monitorApi.delete(id);
       setMonitors((prev) => prev.filter((m) => m.id !== id));
@@ -102,6 +118,7 @@ export default function Dashboard() {
         setSelectedId(remaining.length > 0 ? remaining[0].id : null);
         setLogs([]);
       }
+      fetchStats();
     } catch {
       alert('Silme işlemi başarısız');
     }
@@ -126,12 +143,15 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <AddMonitorModal onCreated={(newMon) => setMonitors((prev) => [...prev, newMon])} />
+              <AddMonitorModal onCreated={(newMon) => {
+                setMonitors((prev) => [...prev, newMon]);
+                fetchStats();
+              }} />
             </div>
           </header>
 
-          {/* İstatistik Kartları */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* İstatistik Kartları (5 Kolon) */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div className="p-4 rounded-xl border border-zinc-800/80 bg-zinc-900/40">
               <span className="text-xs text-zinc-400">Toplam İzlenen</span>
               <div className="text-2xl font-bold mt-1 text-white">{monitors.length}</div>
@@ -149,6 +169,20 @@ export default function Dashboard() {
               <div className="text-2xl font-bold mt-1 text-white">
                 {monitors.length > 0 ? `${Math.round((upCount / monitors.length) * 100)}%` : '-%'}
               </div>
+            </div>
+            <div className="p-4 rounded-xl border border-zinc-800/80 bg-zinc-900/40 flex flex-col justify-between">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-400">Log Depolama</span>
+                <span className="text-[10px] font-mono text-zinc-500">
+                {stats?.totalPingLogsCount ?? 0} ping
+              </span>
+              </div>
+              <div className="text-2xl font-bold mt-1 text-white">
+                {stats?.pingLogsTableSize || '0 kB'}
+              </div>
+              <span className="text-[10px] font-mono text-zinc-500 mt-1 truncate">
+              DB: {stats?.databaseSize || '0 kB'}
+            </span>
             </div>
           </div>
 
@@ -194,7 +228,6 @@ export default function Dashboard() {
                             <div className="text-xs text-zinc-500 truncate">{m.url}</div>
                           </div>
                         </div>
-
                         <button
                             onClick={(e) => handleDelete(e, m.id)}
                             className="opacity-0 group-hover:opacity-100 p-1.5 text-zinc-500 hover:text-rose-400 transition"
@@ -243,12 +276,11 @@ export default function Dashboard() {
                     {selectedMonitor.status}
                   </span>
                     </div>
-
                     <LatencyChart logs={logs} />
                   </>
               ) : (
                   <div className="flex h-64 items-center justify-center rounded-xl border border-zinc-800/60 bg-zinc-950/40 text-xs text-zinc-500">
-                    Detayları görüntülemek için sol taraftan bir monitör seçin.
+                    Detayları incelemek için sol taraftan bir monitör seçin.
                   </div>
               )}
             </div>
