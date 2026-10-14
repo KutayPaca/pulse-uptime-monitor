@@ -9,13 +9,15 @@ import java.util.List;
 
 @Repository
 public interface PingLogRepository extends JpaRepository<PingLog, Long> {
+
     List<PingLog> findTop20ByMonitorIdOrderByCheckedAtDesc(Long monitorId);
 
-    // Veritabanının toplam boyutunu okunabilir formatta (KB, MB) getirir
     @Query(value = "SELECT pg_size_pretty(pg_database_size(current_database()))", nativeQuery = true)
     String getDatabaseSize();
 
-    // Sadece ping_logs tablosunun (ve indekslerinin) boyutunu getirir
     @Query(value = "SELECT pg_size_pretty(pg_total_relation_size('ping_logs'))", nativeQuery = true)
     String getPingLogsTableSize();
+
+    @Query(value = "SELECT COALESCE(pg_total_relation_size(to_regclass('public.ping_logs')), 0)", nativeQuery = true)
+    long getPingLogsTableSizeBytes();
 }

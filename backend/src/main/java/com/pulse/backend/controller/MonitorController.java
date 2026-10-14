@@ -44,8 +44,6 @@ public class MonitorController {
         return ResponseEntity.ok(monitorService.getLogsForMonitor(id));
     }
 
-    // MonitorController.java içerisine ekle:
-
     @GetMapping("/{id}/stats")
     public ResponseEntity<MonitorStatsResponse> getSingleMonitorStats(@PathVariable Long id) {
         return ResponseEntity.ok(monitorService.getStatsForSingleMonitor(id));
@@ -53,16 +51,6 @@ public class MonitorController {
 
     @GetMapping("/stats")
     public ResponseEntity<DatabaseStatsResponse> getDatabaseStats() {
-        String dbSize = monitorService.getDatabaseSize(); // Bunu service'e ekleyeceğiz
-        String tableSize = monitorService.getPingLogsTableSize(); // Bunu service'e ekleyeceğiz
-        long totalLogs = monitorService.getTotalLogsCount(); // Bunu service'e ekleyeceğiz
-
-        DatabaseStatsResponse stats = DatabaseStatsResponse.builder()
-                .databaseSize(dbSize)
-                .pingLogsTableSize(tableSize)
-                .totalPingLogsCount(totalLogs)
-                .build();
-
-        return ResponseEntity.ok(stats);
+        return ResponseEntity.ok(monitorService.getCombinedDatabaseStats());
     }
 }
